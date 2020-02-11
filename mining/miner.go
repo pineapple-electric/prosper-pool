@@ -41,6 +41,7 @@ func InitLX() {
 const (
 	_ = iota
 	BatchCommand
+	CurrentHashRate
 	NewNoncePrefix
 	NewOPRHash
 	ResetRecords
@@ -336,6 +337,14 @@ func (p *PegnetMiner) HandleCommand(c *MinerCommand) {
 		for _, c := range commands {
 			p.HandleCommand(c)
 		}
+	case CurrentHashRate:
+		currentStats := *p.MiningState.stats
+		currentStats.Stop = time.Now()
+		w := c.Data.(chan *SingleMinerStats)
+		select {
+		case w <- &currentStats:
+		default:
+		}
 	case NewNoncePrefix:
 		p.ID = c.Data.(uint32)
 		p.ResetNonce()
@@ -390,6 +399,11 @@ func BuildCommand() *CommandBuilder {
 	c.command = new(MinerCommand)
 	c.command.Command = BatchCommand
 	return c
+}
+
+func (b *CommandBuilder) CurrentHashRate(w chan *SingleMinerStats) *CommandBuilder {
+	b.commands = append(b.commands, &MinerCommand{Command: CurrentHashRate, Data: w})
+	return b
 }
 
 func (b *CommandBuilder) SubmitStats(w chan *SingleMinerStats) *CommandBuilder {
