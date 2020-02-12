@@ -125,7 +125,7 @@ var rootCmd = &cobra.Command{
 			return
 		}
 
-		client, err := stratum.NewClient(username, minerid, password, invitecode, payoutaddress, config.CompiledInVersion)
+		client, err := stratum.NewClient(username, minerid, password, invitecode, payoutaddress, config.CompiledInVersion, nil)
 		if err != nil {
 			panic(err)
 		}
