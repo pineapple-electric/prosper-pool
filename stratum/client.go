@@ -98,7 +98,6 @@ func NewClient(username, minername, password, invitecode, payoutaddress, version
 	c.shutdown = make(chan int, 1)
 
 	go c.ListenForSuccess()
-	go c.ReportHashRate()
 	//
 	//c.miner = mining.NewPegnetMiner(1, commandChannel, successChannel)
 	//go c.miner.Mine(context.Background())
@@ -113,6 +112,8 @@ func (c *Client) InitMiners(num int) {
 			CommandChannel: commandChannel,
 			Miner:          mining.NewPegnetMiner(uint32(i), commandChannel, c.successes),
 		}
+	// Once the miners are initialized, there can be a hash rate to report.
+	go c.ReportHashRate()
 	}
 }
 
