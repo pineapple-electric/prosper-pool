@@ -112,9 +112,9 @@ func (c *Client) InitMiners(num int) {
 			CommandChannel: commandChannel,
 			Miner:          mining.NewPegnetMiner(uint32(i), commandChannel, c.successes),
 		}
+	}
 	// Once the miners are initialized, there can be a hash rate to report.
 	go c.ReportHashRate()
-	}
 }
 
 func (c *Client) SetFakeHashRate(rate int) {
