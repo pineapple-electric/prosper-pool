@@ -242,6 +242,7 @@ func (p *PegnetMiner) MineBatch(ctx context.Context, batchsize int) {
 			p.MiningState.stats.TotalHashes++
 
 			if diff > p.MiningState.minimumDifficulty {
+				fmt.Printf("%d: %d %s\n", p.PersonalID, p.MiningState.oprhash, hex.EncodeToString(append(p.MiningState.static[32:], batch[i]...)))
 				success := &Winner{
 					OPRHash: hex.EncodeToString(p.MiningState.oprhash),
 					Nonce:   hex.EncodeToString(append(p.MiningState.static[32:], batch[i]...)),
@@ -305,6 +306,7 @@ func (p *PegnetMiner) Mine(ctx context.Context) {
 		p.MiningState.stats.TotalHashes++
 		p.MiningState.stats.NewDifficulty(diff)
 		if diff > p.MiningState.minimumDifficulty {
+			fmt.Printf("%d: %d %s\n", p.PersonalID, p.MiningState.oprhash, hex.EncodeToString(p.MiningState.Nonce))
 			success := &Winner{
 				OPRHash: hex.EncodeToString(p.MiningState.oprhash),
 				Nonce:   hex.EncodeToString(p.MiningState.Nonce),
