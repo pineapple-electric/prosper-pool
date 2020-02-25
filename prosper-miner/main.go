@@ -159,10 +159,6 @@ var rootCmd = &cobra.Command{
 		log.Infof("Username: %s, MinerID: %s", username, minerid)
 		log.Infof("Using %d threads", miners)
 
-		exit.GlobalExitHandler.AddExit(func() error {
-			return client.Close()
-		})
-
 		err = client.Connect(viper.GetString(ConfigHost))
 		if err != nil {
 			panic(err)
