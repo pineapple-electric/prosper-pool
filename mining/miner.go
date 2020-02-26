@@ -10,33 +10,12 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
-	"os"
-	"strconv"
-	"sync"
 	"time"
 
 	lxr "github.com/pegnet/LXRHash"
 	log "github.com/sirupsen/logrus"
 	"go.uber.org/ratelimit"
 )
-
-// LX holds an instance of lxrhash
-var LX lxr.LXRHash
-var lxInitializer sync.Once
-
-// The init function for LX is expensive. So we should explicitly call the init if we intend
-// to use it. Make the init call idempotent
-func InitLX() {
-	lxInitializer.Do(func() {
-		// This code will only be executed ONCE, no matter how often you call it
-		LX.Verbose(true)
-		if size, err := strconv.Atoi(os.Getenv("LXRBITSIZE")); err == nil && size >= 8 && size <= 30 {
-			LX.Init(0xfafaececfafaecec, uint64(size), 256, 5)
-		} else {
-			LX.Init(lxr.Seed, lxr.MapSizeBits, lxr.HashSize, lxr.Passes)
-		}
-	})
-}
 
 const (
 	_ = iota
@@ -84,6 +63,9 @@ type PegnetMiner struct {
 
 	// Used to compute difficulties
 	ComputeDifficulty func(oprhash, nonce []byte) (difficulty uint64)
+
+	// A handle for the LXR hash
+	sharedLXR *lxr.LXRHash
 }
 
 type oprMiningState struct {
@@ -151,9 +133,8 @@ func (p *PegnetMiner) ResetNonce() {
 	p.resetStatic()
 }
 
-func NewPegnetMiner(id uint32, commands chan *MinerCommand, successes chan *Winner) *PegnetMiner {
+func NewPegnetMiner(id uint32, commands chan *MinerCommand, successes chan *Winner, sharedLXR *lxr.LXRHash) *PegnetMiner {
 	p := new(PegnetMiner)
-	InitLX()
 	p.ID = id
 	p.PersonalID = id
 	p.commands = commands
@@ -164,9 +145,17 @@ func NewPegnetMiner(id uint32, commands chan *MinerCommand, successes chan *Winn
 	p.ResetNonce()
 	p.MiningState.stats = NewSingleMinerStats(p.PersonalID)
 
-	p.ComputeDifficulty = ComputeDifficulty
+	p.ComputeDifficulty = wrapComputeDifficulty(sharedLXR)
+	p.sharedLXR = sharedLXR
 
 	return p
+}
+
+func (p *PegnetMiner) Close() {
+	p.paused = true
+	// Throw away the references to sharedLXR
+	p.ComputeDifficulty = nil
+	p.sharedLXR = nil
 }
 
 // SetFakeHashRate sets the miner to "fake" a hashrate. All targets are invalid
@@ -230,7 +219,7 @@ func (p *PegnetMiner) MineBatch(ctx context.Context, batchsize int) {
 		}
 
 		var results [][]byte
-		results = LX.HashParallel(p.MiningState.static, batch)
+		results = p.sharedLXR.HashParallel(p.MiningState.static, batch)
 		for i := range results {
 			// do something with the result here
 			// nonce = batch[i]
@@ -388,6 +377,25 @@ func (p *PegnetMiner) waitForResume(ctx context.Context) {
 	}
 }
 
+func wrapComputeDifficulty(sharedLXR *lxr.LXRHash) func([]byte, []byte) uint64 {
+	if sharedLXR == nil {
+		log.Fatal("Cannot calculate difficulty with nil LXRHash")
+	}
+	return func(oprhash, nonce []byte) (difficulty uint64) {
+		no := make([]byte, len(oprhash)+len(nonce))
+		i := copy(no, oprhash)
+		copy(no[i:], nonce)
+		b := sharedLXR.Hash(no)
+
+		// The high eight bytes of the hash(hash(entry.Content) + nonce) is the difficulty.
+		// Because we don't have a difficulty bar, we can define difficulty as the greatest
+		// value, rather than the minimum value.  Our bar is the greatest difficulty found
+		// within a 10 minute period.  We compute difficulty as Big Endian.
+		return uint64(b[7]) | uint64(b[6])<<8 | uint64(b[5])<<16 | uint64(b[4])<<24 |
+			uint64(b[3])<<32 | uint64(b[2])<<40 | uint64(b[1])<<48 | uint64(b[0])<<56
+	}
+}
+
 // CommandBuilder just let's me use building syntax to build commands
 type CommandBuilder struct {
 	command  *MinerCommand
@@ -443,18 +451,4 @@ func (b *CommandBuilder) ResumeMining() *CommandBuilder {
 func (b *CommandBuilder) Build() *MinerCommand {
 	b.command.Data = b.commands
 	return b.command
-}
-
-func ComputeDifficulty(oprhash, nonce []byte) (difficulty uint64) {
-	no := make([]byte, len(oprhash)+len(nonce))
-	i := copy(no, oprhash)
-	copy(no[i:], nonce)
-	b := LX.Hash(no)
-
-	// The high eight bytes of the hash(hash(entry.Content) + nonce) is the difficulty.
-	// Because we don't have a difficulty bar, we can define difficulty as the greatest
-	// value, rather than the minimum value.  Our bar is the greatest difficulty found
-	// within a 10 minute period.  We compute difficulty as Big Endian.
-	return uint64(b[7]) | uint64(b[6])<<8 | uint64(b[5])<<16 | uint64(b[4])<<24 |
-		uint64(b[3])<<32 | uint64(b[2])<<40 | uint64(b[1])<<48 | uint64(b[0])<<56
 }

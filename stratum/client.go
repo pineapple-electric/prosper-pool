@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"os"
 	"reflect"
 	"strconv"
 	"strings"
@@ -14,8 +15,12 @@ import (
 	"time"
 
 	"github.com/FactomWyomingEntity/prosper-pool/mining"
+	lxr "github.com/pegnet/LXRHash"
 	log "github.com/sirupsen/logrus"
+	"golang.org/x/sync/semaphore"
 )
+
+const sharedLXRCount = 1
 
 var _ = log.Println
 
@@ -40,6 +45,8 @@ type Client struct {
 	miners         []*ControlledMiner
 	successes      chan *mining.Winner
 	totalSuccesses uint64 // Total submitted shares
+	lxrSemaphore   *semaphore.Weighted
+	sharedLXR      *lxr.LXRHash
 	notificationChannels *NotificationChannels
 	shutdown       chan int
 
@@ -90,6 +97,7 @@ func NewClient(username, minername, password, invitecode, payoutaddress, version
 	c.currentTarget = 0xfffe000000000000
 	c.requestsMade = make(map[int32]func(Response))
 
+	c.lxrSemaphore = semaphore.NewWeighted(int64(sharedLXRCount))
 	successChannel := make(chan *mining.Winner, 100)
 	c.successes = successChannel
 	c.notificationChannels = notificationChannels
@@ -105,12 +113,13 @@ func NewClient(username, minername, password, invitecode, payoutaddress, version
 }
 
 func (c *Client) InitMiners(num int) {
+	c.initSharedLXRHash()
 	c.miners = make([]*ControlledMiner, num)
 	for i := range c.miners {
 		commandChannel := make(chan *mining.MinerCommand, 15)
 		c.miners[i] = &ControlledMiner{
 			CommandChannel: commandChannel,
-			Miner:          mining.NewPegnetMiner(uint32(i), commandChannel, c.successes),
+			Miner:          mining.NewPegnetMiner(uint32(i), commandChannel, c.successes, c.sharedLXR),
 		}
 	}
 	// Once the miners are initialized, there can be a hash rate to report.
@@ -338,6 +347,10 @@ func (c *Client) Close() error {
 	for i, j := 0, cap(c.shutdown); i < j; i++ {
 		c.shutdown <- 1
 	}
+	for i := range c.miners {
+		c.miners[i].Miner.Close()
+	}
+	c.releaseSharedLXRHash()
 	if !reflect.ValueOf(c.conn).IsNil() {
 		log.Infof("shutting down stratum client")
 		return c.conn.Close()
@@ -345,7 +358,7 @@ func (c *Client) Close() error {
 	return nil
 }
 
-func (c *Client) Listen(ctx context.Context) {
+func (c *Client) Listen(ctx context.Context) error {
 	// Capture a cancel and close the client
 	go func() {
 		select {
@@ -365,59 +378,69 @@ func (c *Client) Listen(ctx context.Context) {
 		readBytes, _, err := r.ReadLine()
 		if err != nil {
 			if !c.autoreconnect {
-				return // Stop trying to reconnect
+				return err // Stop trying to reconnect
 			}
 			_ = c.conn.Close()
 			log.WithError(err).Errorf("client lost connection to the server, reconnect attempt in 5s")
 			err := c.BlockTillConnected(originalServerAddress, "5")
 			if err != nil {
 				log.WithError(err).Error("miner reconnect failed")
-				return
+				return err
 			}
 
 			_ = c.Handshake()
 			r = bufio.NewReader(c.conn)
 		} else {
-			c.HandleMessage(readBytes)
+			err := c.HandleMessage(readBytes)
+			if err != nil {
+				return err
+			}
 		}
 	}
+	return nil
 }
 
-func (c *Client) HandleMessage(data []byte) {
+func (c *Client) HandleMessage(data []byte) error {
 	var u UnknownRPC
 	err := json.Unmarshal(data, &u)
 	if err != nil {
-		log.WithError(err).Warnf("client read failed")
+		log.WithError(err).Warn("client.HandleMessage() failed to unmarshal JSON")
+		return err
 	}
 
 	if u.IsRequest() {
 		req := u.GetRequest()
-		c.HandleRequest(req)
+		err := c.HandleRequest(req)
+		if err != nil {
+			return err
+		}
 	} else {
 		resp := u.GetResponse()
-		c.HandleResponse(resp)
+		err := c.HandleResponse(resp)
+		if err != nil {
+			return err
+		}
 	}
-
-	// TODO: Don't just print everything
-	//log.Infof(string(data))
+	return nil
 }
 
-func (c *Client) HandleRequest(req Request) {
+func (c *Client) HandleRequest(req Request) error {
 	var params RPCParams
 	if err := req.FitParams(&params); err != nil {
 		log.WithField("method", req.Method).Warnf("bad params %s", req.Method)
-		return
+		return err
 	}
 
 	switch req.Method {
 	case "client.get_version":
 		if err := c.Encode(GetVersionResponse(req.ID, c.version)); err != nil {
 			log.WithField("method", req.Method).WithError(err).Error("failed to respond to get_version")
+			return err
 		}
 	case "client.reconnect":
 		if len(params) < 2 {
-			log.Errorf("Not enough parameters to reconnect with: %s\n", params)
-			return
+			err := fmt.Errorf("Not enough parameters to reconnect with: %s\n", params)
+			return err
 		}
 
 		waittime := "0"
@@ -425,24 +448,27 @@ func (c *Client) HandleRequest(req Request) {
 			_, err := strconv.ParseInt(params[2], 10, 64)
 			if err == nil {
 				waittime = params[2]
+			} else {
+				return err
 			}
 		}
 
 		if err := c.WaitThenConnect(params[0]+":"+params[1], waittime); err != nil {
 			log.WithField("method", req.Method).WithError(err).Error("failed to reconnect")
+			return err
 		}
 	case "client.show_message":
 		if len(params) < 1 {
 			log.Errorln("No message to show")
-			return
+			return fmt.Errorf("client.show_message request with no message")
 		}
-		// Print & log message in human-readable way
+		// Print message in human-readable way
 		fmt.Printf("\n\nMessage from server: %s\n\n\n", params[0])
-		//log.Printf("Message from server: %s\n", params[0])
 	case "mining.notify":
 		if len(params) < 2 {
-			log.Errorf("Not enough parameters from notify: %s\n", params)
-			return
+			err := fmt.Errorf("Not enough parameters from notify: %s\n", params)
+			log.Error(err)
+			return err
 		}
 
 		jobID := params[0]
@@ -451,14 +477,14 @@ func (c *Client) HandleRequest(req Request) {
 		newJobID, err := strconv.ParseInt(jobID, 10, 64)
 		if err != nil {
 			log.Error("Not a valid new JobID")
-			return
+			return fmt.Errorf("mining.notify has an invalid new JobID")
 		}
 		existingJobID, _ := strconv.ParseInt(c.currentJobID, 10, 64)
 		if newJobID >= existingJobID {
 			myHexBytes, err := hex.DecodeString(oprHash)
 			if err != nil {
 				log.Error(err)
-				return
+				return err
 			}
 			if newJobID > existingJobID {
 				c.currentJobID = jobID
@@ -483,13 +509,13 @@ func (c *Client) HandleRequest(req Request) {
 	case "mining.set_target":
 		if len(params) < 1 {
 			log.Errorf("Not enough parameters from set_target: %s\n", params)
-			return
+			return fmt.Errorf("Not enough parameters from set_target: %s\n", params)
 		}
 
 		result, err := strconv.ParseUint(strings.Replace(params[0], "0x", "", -1), 16, 64)
 		if err != nil {
 			log.Errorln("Target unable to be converted to uint: ", err)
-			return
+			return err
 		}
 		c.currentTarget = uint64(result)
 
@@ -502,14 +528,14 @@ func (c *Client) HandleRequest(req Request) {
 	case "mining.set_nonce":
 		if len(params) < 1 {
 			log.Errorf("Not enough parameters from set_nonce: %s\n", params)
-			return
+			return fmt.Errorf("mining.set_nonce does not have enough parameters")
 		}
 
 		nonceString := params[0]
 		nonce, err := strconv.ParseUint(nonceString, 10, 32)
 		if err != nil {
 			log.Errorln("Nonce unable to be converted to integer: ", err)
-			return
+			return err
 		}
 
 		c.SetNewNonce(uint32(nonce))
@@ -522,6 +548,7 @@ func (c *Client) HandleRequest(req Request) {
 	default:
 		log.Warnf("unknown method %s", req.Method)
 	}
+	return nil
 }
 
 func (c *Client) SetNewNonce(nonce uint32) {
@@ -570,15 +597,17 @@ func (c *Client) AggregateStatsAndNotify(job int32, stats chan *mining.SingleMin
 	}
 }
 
-func (c *Client) HandleResponse(resp Response) {
+func (c *Client) HandleResponse(resp Response) error {
 	c.Lock()
 	if funcToPerform, ok := c.requestsMade[resp.ID]; ok {
 		funcToPerform(resp)
 		delete(c.requestsMade, resp.ID)
 	} else {
 		log.Errorf("Response received for unrecognized request ID: %d (ignoring)\n", resp.ID)
+		return fmt.Errorf("Response received for unrecognized request ID: %d", resp.ID)
 	}
 	c.Unlock()
+	return nil
 }
 
 func (c *Client) ListenForSuccess() {
@@ -606,6 +635,10 @@ func (c *Client) ListenForSuccess() {
 	}
 }
 
+func (c *Client) RemoteAddr() string {
+	return c.conn.RemoteAddr().String()
+}
+
 func (c *Client) ReportHashRate() {
 	ticker := time.NewTicker(time.Second * 10)
 	for {
@@ -627,4 +660,21 @@ func (c *Client) ReportHashRate() {
 
 func (c *Client) TotalSuccesses() uint64 {
 	return c.totalSuccesses
+}
+
+func (c *Client) initSharedLXRHash() {
+	if c.lxrSemaphore.TryAcquire(sharedLXRCount) {
+		c.sharedLXR = &lxr.LXRHash{}
+		if size, err := strconv.Atoi(os.Getenv("LXRBITSIZE")); err == nil && size >= 8 && size <=30 {
+			c.sharedLXR = lxr.Init(0xfafaececfafaecec, uint64(size), 256, 5)
+		} else {
+			c.sharedLXR = lxr.Init(lxr.Seed, lxr.MapSizeBits, lxr.HashSize, lxr.Passes)
+		}
+	}
+}
+
+func (c *Client) releaseSharedLXRHash() {
+	lxr.Release(c.sharedLXR)
+	c.sharedLXR = nil
+	c.lxrSemaphore.Release(sharedLXRCount)
 }

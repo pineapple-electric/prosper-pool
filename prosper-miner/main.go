@@ -19,6 +19,7 @@ import (
 	"github.com/FactomWyomingEntity/prosper-pool/loghelp"
 	"github.com/FactomWyomingEntity/prosper-pool/profile"
 	"github.com/FactomWyomingEntity/prosper-pool/stratum"
+	"github.com/kardianos/service"
 	"github.com/pegnet/pegnet/modules/factoidaddress"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -60,6 +61,9 @@ func init() {
 	rootCmd.Flags().IntP("miners", "t", runtime.NumCPU(), "Number of mining threads")
 
 	rootCmd.AddCommand(properties)
+	rootCmd.AddCommand(feedCmd)
+	rootCmd.AddCommand(rpcCmd)
+	rootCmd.AddCommand(serviceCmd)
 }
 
 // Pool entry point
@@ -79,6 +83,10 @@ var rootCmd = &cobra.Command{
 	Short:   "Launch miner to communicate with the prosper mining pool.",
 	PreRunE: OpenConfig,
 	Run: func(cmd *cobra.Command, args []string) {
+		if !service.Interactive() {
+			runMinerService()
+			return
+		}
 		ctx, cancel := context.WithCancel(context.Background())
 		exit.GlobalExitHandler.AddCancel(cancel)
 		keyboardReader := bufio.NewReader(os.Stdin)
@@ -201,6 +209,9 @@ var rootCmd = &cobra.Command{
 
 func OpenConfig(cmd *cobra.Command, args []string) error {
 	initLogger(cmd)
+	if !service.Interactive() {
+		return nil
+	}
 	closeHandle()
 
 	configPath, _ := cmd.Flags().GetString("config")
