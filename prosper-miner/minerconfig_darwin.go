@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 )
 
-const BundleIdentifier = "io.prosperpool.ProsperMiner"
+const bundleIdentifier = "io.prosperpool.ProsperMiner"
 
 func getSystemConfigFilePath() (string, error) {
 
