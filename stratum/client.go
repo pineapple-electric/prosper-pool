@@ -112,8 +112,8 @@ func NewClient(username, minername, password, invitecode, payoutaddress, version
 	return c, nil
 }
 
-func (c *Client) InitMiners(num int) {
-	c.initSharedLXRHash()
+func (c *Client) InitMiners(num int, hashTableDirectory string) {
+	c.initSharedLXRHash(hashTableDirectory)
 	c.miners = make([]*ControlledMiner, num)
 	for i := range c.miners {
 		commandChannel := make(chan *mining.MinerCommand, 15)
@@ -662,19 +662,18 @@ func (c *Client) TotalSuccesses() uint64 {
 	return c.totalSuccesses
 }
 
-func (c *Client) initSharedLXRHash() {
+func (c *Client) initSharedLXRHash(hashTableDirectory string) {
 	if c.lxrSemaphore.TryAcquire(sharedLXRCount) {
 		c.sharedLXR = &lxr.LXRHash{}
 		if size, err := strconv.Atoi(os.Getenv("LXRBITSIZE")); err == nil && size >= 8 && size <=30 {
-			c.sharedLXR = lxr.Init(0xfafaececfafaecec, uint64(size), 256, 5)
+			c.sharedLXR.InitFromPath(0xfafaececfafaecec, uint64(size), 256, 5, hashTableDirectory)
 		} else {
-			c.sharedLXR = lxr.Init(lxr.Seed, lxr.MapSizeBits, lxr.HashSize, lxr.Passes)
+			c.sharedLXR.InitFromPath(lxr.Seed, lxr.MapSizeBits, lxr.HashSize, lxr.Passes, hashTableDirectory)
 		}
 	}
 }
 
 func (c *Client) releaseSharedLXRHash() {
-	lxr.Release(c.sharedLXR)
 	c.sharedLXR = nil
 	c.lxrSemaphore.Release(sharedLXRCount)
 }

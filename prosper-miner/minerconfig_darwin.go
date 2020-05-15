@@ -7,6 +7,13 @@ import (
 )
 
 const bundleIdentifier = "io.prosperpool.ProsperMiner"
+const lxrhashBundleIdentifier = "org.pegnet.LXRHash"
+
+func getDefaultHashTableDirectory() (string, error) {
+
+	path := filepath.Join("/Library", "Application Support", lxrhashBundleIdentifier)
+	return path, nil
+}
 
 func getSystemConfigFilePath() (string, error) {
 

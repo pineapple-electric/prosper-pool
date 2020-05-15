@@ -110,6 +110,7 @@ func (m *Mining) InitializeMiners () error {
 		m.Lock()
 		m.client, err = stratum.NewClient(m.mc.emailaddress, m.mc.minerid, "", "", "", config.CompiledInVersion, m.notificationChannels)
 		concurrentminers := m.mc.concurrentminers
+		hashtabledirectory := m.mc.hashtabledirectory
 		m.Unlock()
 		if err != nil {
 			m.RLock()
@@ -118,7 +119,7 @@ func (m *Mining) InitializeMiners () error {
 			log.Error(err)
 			return errors.New("Failed to create new Stratum client")
 		}
-		m.client.InitMiners(concurrentminers)
+		m.client.InitMiners(concurrentminers, hashtabledirectory)
 	}
 	return nil
 }

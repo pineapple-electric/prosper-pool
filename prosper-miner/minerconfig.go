@@ -14,6 +14,7 @@ import (
 )
 
 const (
+	ConfigHashTableDirectoryKey = "lxrhash.tabledir"
 	ConfigEmailAddressKey = "miner.username"
 	ConfigMinerIdKey = "miner.minerid"
 	ConfigConcurrentMinersKey = "miner.threads"
@@ -26,6 +27,7 @@ var rxHostAndPort = regexp.MustCompile(":[1-6]?[0-9]{1,4}$")
 // Configuration values for the miner
 type minerConfig struct {
 	emailaddress string
+	hashtabledirectory string
 	minerid string
 	concurrentminers int
 	poolhostandport string
@@ -38,6 +40,12 @@ func getMinerConfig(path string) (*minerConfig, error) {
 	dir := filepath.Dir(path)
 	name := filepath.Base(path)
 	extension := filepath.Ext(name)
+
+	if hashtabledir, err := getDefaultHashTableDirectory(); err == nil {
+		viper.SetDefault(ConfigHashTableDirectoryKey, hashtabledir)
+	} else {
+		return nil, err
+	}
 
 	viper.AddConfigPath(dir)
 	viper.SetConfigName(strings.TrimSuffix(name, extension))
@@ -55,6 +63,7 @@ func getMinerConfig(path string) (*minerConfig, error) {
 	}
 
 	mc := &minerConfig{}
+	mc.hashtabledirectory = viper.GetString(ConfigHashTableDirectoryKey)
 	mc.emailaddress = viper.GetString(ConfigEmailAddressKey)
 	mc.minerid = viper.GetString(ConfigMinerIdKey)
 	mc.concurrentminers = viper.GetInt(ConfigConcurrentMinersKey)

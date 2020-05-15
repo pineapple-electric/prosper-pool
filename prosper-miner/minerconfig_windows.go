@@ -9,6 +9,16 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+func getDefaultHashTableDirectory() (string, error) {
+	pdpath, err := windows.KnownFolderPath(windows.FOLDERID_ProgramData, 0)
+	if err != nil {
+		log.Error("Unable to find the ProgramData folder")
+		return "", err
+	}
+	path := filepath.Join(pdpath, "LXRHash")
+	return path, nil
+}
+
 func getSystemConfigFilePath() (string, error) {
 	pdpath, err := windows.KnownFolderPath(windows.FOLDERID_ProgramData, 0)
 	if err != nil {
