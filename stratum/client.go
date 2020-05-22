@@ -351,9 +351,11 @@ func (c *Client) Close() error {
 		c.miners[i].Miner.Close()
 	}
 	c.releaseSharedLXRHash()
-	if !reflect.ValueOf(c.conn).IsNil() {
-		log.Infof("shutting down stratum client")
-		return c.conn.Close()
+	if reflect.ValueOf(c.conn).IsValid() {
+		log.Info("Shutting down Stratum client")
+		if err := c.conn.Close(); err != nil {
+			return err
+		}
 	}
 	return nil
 }

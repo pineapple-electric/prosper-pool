@@ -20,6 +20,7 @@ type Mining struct {
 	client *stratum.Client
 	connectedAt *time.Time
 	disconnect context.CancelFunc
+	statusChannel chan *MiningStatus
 	sync.RWMutex
 }
 
@@ -28,10 +29,11 @@ func NewMining () *Mining {
 	mining := &Mining{}
 	mining.paused = false
 	mining.notificationChannels = stratum.NewNotificationChannels()
+	mining.statusChannel = make(chan *MiningStatus)
 	return mining
 }
 
-func (m *Mining) GetHashRateChannel() (chan float64) {
+func (m *Mining) GetHashRateChannel() (<-chan float64) {
 	if m.notificationChannels != nil {
 		return m.notificationChannels.HashRateChannel
 	} else {
@@ -58,22 +60,16 @@ type MiningStatus struct {
 
 func (m *Mining) GetStatus() *MiningStatus {
 	log.Trace("Mining.GetStatus()")
-	var status = &MiningStatus{}
 	m.RLock()
 	defer m.RUnlock()
-	status.IsPaused = m.paused
-	status.IsConnected = m.connectedAt != nil
-	if status.IsConnected {
-		status.PoolHostAndPort = m.client.RemoteAddr()
-		status.DurationConnected = uint64(time.Since(*m.connectedAt).Seconds())
-		status.BlocksSubmitted = m.client.TotalSuccesses() + m.blocksSubmitted
-	} else {
-		status.BlocksSubmitted = m.blocksSubmitted
-	}
-	return status
+	return m.getStatusWhileRLocked()
 }
 
-func (m *Mining) GetSubmissionChannel() (chan int) {
+func (m *Mining) GetStatusChannel() (<-chan *MiningStatus) {
+	return m.statusChannel
+}
+
+func (m *Mining) GetSubmissionChannel() (<-chan int) {
 	if m.notificationChannels != nil {
 		return m.notificationChannels.SubmissionChannel
 	} else {
@@ -156,6 +152,7 @@ func (m *Mining) MineUntilStopped() error {
 		m.Lock()
 		t := time.Now()
 		m.connectedAt = &t
+		m.sendStatusNotificationWhileRLocked()
 		m.Unlock()
 	} else {
 		log.WithFields(log.Fields{ConfigPoolHostAndPortKey: poolhostandport}).Debug("Failed to connect to the pool host")
@@ -172,6 +169,7 @@ func (m *Mining) MineUntilStopped() error {
 	cancel()
 	m.disconnect = nil
 	m.connectedAt = nil
+	m.sendStatusNotificationWhileRLocked()
 	m.Unlock()
 	return err
 }
@@ -200,10 +198,34 @@ func (m *Mining) Stop() {
 
 // private methods
 
+func (m *Mining) sendStatusNotificationWhileRLocked() {
+	if m.statusChannel != nil {
+		// Notify status listeners.  Do nothing if no goroutines are listening.
+		select {
+		case m.statusChannel <- m.getStatusWhileRLocked():
+		default:
+		}
+	}
+}
+
+func (m *Mining) getStatusWhileRLocked() *MiningStatus {
+	var status = &MiningStatus{}
+	status.IsPaused = m.paused
+	status.IsConnected = m.connectedAt != nil
+	if status.IsConnected {
+		status.PoolHostAndPort = m.client.RemoteAddr()
+		status.DurationConnected = uint64(time.Since(*m.connectedAt).Seconds())
+		status.BlocksSubmitted = m.client.TotalSuccesses() + m.blocksSubmitted
+	} else {
+		status.BlocksSubmitted = m.blocksSubmitted
+	}
+	return status
+}
+
 func (m *Mining) resetWhileLocked() {
 	log.Trace("Mining.resetWhileLocked()")
 	if m.disconnect != nil {
-		log.Warn("Disconnecting")
+		log.Info("Disconnecting")
 		m.disconnect()
 		m.disconnect = nil
 	}
@@ -211,6 +233,8 @@ func (m *Mining) resetWhileLocked() {
 		successes := m.client.TotalSuccesses()
 		log.WithFields(log.Fields{"successes": successes}).Debug("Adding blocksSubmitted")
 		m.blocksSubmitted += m.client.TotalSuccesses()
+		// Stop internal goroutines
+		m.client.Close()
 	}
 	m.mc = nil
 	m.client = nil
