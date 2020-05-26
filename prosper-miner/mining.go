@@ -25,7 +25,7 @@ type Mining struct {
 }
 
 func NewMining () *Mining {
-	log.Trace("NewMining()")
+	log.Trace("NewMining")
 	mining := &Mining{}
 	mining.paused = false
 	mining.notificationChannels = stratum.NewNotificationChannels()
@@ -42,7 +42,7 @@ func (m *Mining) GetHashRateChannel() (<-chan float64) {
 }
 
 func (m *Mining) GetMinerConfig() error {
-	log.Trace("Mining.GetMinerConfig()")
+	log.Trace("Mining.GetMinerConfig")
 	m.Lock()
 	defer m.Unlock()
 	var err error = nil
@@ -59,17 +59,19 @@ type MiningStatus struct {
 }
 
 func (m *Mining) GetStatus() *MiningStatus {
-	log.Trace("Mining.GetStatus()")
+	log.Trace("Mining.GetStatus")
 	m.RLock()
 	defer m.RUnlock()
 	return m.getStatusWhileRLocked()
 }
 
 func (m *Mining) GetStatusChannel() (<-chan *MiningStatus) {
+	log.Trace("Mining.GetStatusChannel")
 	return m.statusChannel
 }
 
 func (m *Mining) GetSubmissionChannel() (<-chan int) {
+	log.Trace("Mining.GetSubmissionChannel")
 	if m.notificationChannels != nil {
 		return m.notificationChannels.SubmissionChannel
 	} else {
@@ -90,7 +92,7 @@ func (m *Mining) HasStratumClient() bool {
 }
 
 func (m *Mining) InitializeMiners () error {
-	log.Trace("Mining.InitializeMiners()")
+	log.Trace("Mining.InitializeMiners")
 	if !m.HasMinerConfig() {
 		log.Error("Cannot start mining without miner configuration")
 		return errors.New("Miner configuration is missing")
@@ -133,7 +135,7 @@ func (m *Mining) IsPaused() bool {
 }
 
 func (m *Mining) MineUntilStopped() error {
-	log.Trace("Mining.MineUntilStopped()")
+	log.Trace("Mining.MineUntilStopped")
 	ctx, cancel := context.WithCancel(context.Background())
 	exit.GlobalExitHandler.AddCancel(cancel)
 	m.Lock()
@@ -175,21 +177,21 @@ func (m *Mining) MineUntilStopped() error {
 }
 
 func (m *Mining) Reset() {
-	log.Trace("Mining.Reset()")
+	log.Trace("Mining.Reset")
 	m.Lock()
 	m.resetWhileLocked()
 	m.Unlock()
 }
 
 func (m *Mining) Start() {
-	log.Trace("Mining.Start()")
+	log.Trace("Mining.Start")
 	m.Lock()
 	defer m.Unlock()
 	m.paused = false
 }
 
 func (m *Mining) Stop() {
-	log.Trace("Mining.Stop()")
+	log.Trace("Mining.Stop")
 	m.Lock()
 	defer m.Unlock()
 	m.paused = true
@@ -199,6 +201,7 @@ func (m *Mining) Stop() {
 // private methods
 
 func (m *Mining) sendStatusNotificationWhileRLocked() {
+	log.Trace("Mining.sendStatusNotificationWhileRLocked")
 	if m.statusChannel != nil {
 		// Notify status listeners.  Do nothing if no goroutines are listening.
 		select {
@@ -209,6 +212,7 @@ func (m *Mining) sendStatusNotificationWhileRLocked() {
 }
 
 func (m *Mining) getStatusWhileRLocked() *MiningStatus {
+	log.Trace("Mining.getStatusWhileRLocked")
 	var status = &MiningStatus{}
 	status.IsPaused = m.paused
 	status.IsConnected = m.connectedAt != nil
@@ -223,7 +227,7 @@ func (m *Mining) getStatusWhileRLocked() *MiningStatus {
 }
 
 func (m *Mining) resetWhileLocked() {
-	log.Trace("Mining.resetWhileLocked()")
+	log.Trace("Mining.resetWhileLocked")
 	if m.disconnect != nil {
 		log.Info("Disconnecting")
 		m.disconnect()

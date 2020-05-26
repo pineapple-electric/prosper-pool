@@ -79,6 +79,7 @@ func (s MinerRPCService) Stop() {
 // notifier.Notify() for each subscribed client.
 
 func (s MinerRPCService) HashRateSubscription(ctx context.Context) (*rpc.Subscription, error) {
+	log.Trace("MinerRPCService.HashRateSubscription")
 	notifier, subscription, err := getNotifierAndSubscription(ctx)
 	if err != nil {
 		return nil, err
@@ -90,6 +91,7 @@ func (s MinerRPCService) HashRateSubscription(ctx context.Context) (*rpc.Subscri
 }
 
 func (s MinerRPCService) StatusSubscription(ctx context.Context) (*rpc.Subscription, error) {
+	log.Trace("MinerRPCService.StatusSubscription")
 	notifier, subscription, err := getNotifierAndSubscription(ctx)
 	if err != nil {
 		return nil, err
@@ -101,6 +103,7 @@ func (s MinerRPCService) StatusSubscription(ctx context.Context) (*rpc.Subscript
 }
 
 func (s MinerRPCService) SubmissionSubscription(ctx context.Context) (*rpc.Subscription, error) {
+	log.Trace("MinerRPCService.SubmissionSubscription")
 	notifier, subscription, err := getNotifierAndSubscription(ctx)
 	if err != nil {
 		return nil, err
@@ -114,6 +117,7 @@ func (s MinerRPCService) SubmissionSubscription(ctx context.Context) (*rpc.Subsc
 // Private methods
 
 func (s MinerRPCService) addHashRateSubscription(subscription *rpc.Subscription, notifier *rpc.Notifier) error {
+	log.Trace("MinerRPCService.addHashRateSubscription")
 	sub := &hashRateSubscription{subscription, notifier, &s.hashRateSubscriptions, s.m.GetHashRateChannel()}
 	if sub.channel != nil {
 		s.Lock()
@@ -132,6 +136,7 @@ func (s MinerRPCService) addHashRateSubscription(subscription *rpc.Subscription,
 }
 
 func (s MinerRPCService) addStatusSubscription(subscription *rpc.Subscription, notifier *rpc.Notifier) error {
+	log.Trace("MinerRPCService.addStatusSubscription")
 	sub := &statusSubscription{subscription, notifier, &s.statusSubscriptions, s.m.GetStatusChannel()}
 	if sub.channel != nil {
 		s.Lock()
@@ -150,6 +155,7 @@ func (s MinerRPCService) addStatusSubscription(subscription *rpc.Subscription, n
 }
 
 func (s MinerRPCService) addSubmissionSubscription(subscription *rpc.Subscription, notifier *rpc.Notifier) error {
+	log.Trace("MinerRPCService.addSubmissionSubscription")
 	sub := &submissionSubscription{subscription, notifier, &s.submissionSubscriptions, s.m.GetSubmissionChannel()}
 	if sub.channel != nil {
 		s.Lock()
@@ -168,6 +174,7 @@ func (s MinerRPCService) addSubmissionSubscription(subscription *rpc.Subscriptio
 }
 
 func (s MinerRPCService) hashRateSubscriptionMonitor(sub *hashRateSubscription) {
+	log.Trace("MinerRPCService.hashRateSubscriptionMonitor")
 	subscription := sub.subscription
 	notifier := sub.notifier
 	for {
@@ -187,6 +194,7 @@ func (s MinerRPCService) hashRateSubscriptionMonitor(sub *hashRateSubscription) 
 }
 
 func (s MinerRPCService) hashRateSubscriptionWorker(channel hashRateChannel) {
+	log.Trace("MinerRPCService.hashRateSubscriptionWorker")
 	for {
 		select {
 		case i := <-channel:
@@ -205,24 +213,28 @@ func (s MinerRPCService) hashRateSubscriptionWorker(channel hashRateChannel) {
 }
 
 func (s MinerRPCService) removeHashRateSubscription(sub *hashRateSubscription) {
+	log.Trace("MinerRPCService.removeHashRateSubscription")
 	s.Lock()
 	defer s.Unlock()
 	delete(s.hashRateSubscriptions, sub)
 }
 
 func (s MinerRPCService) removeStatusSubscription(sub *statusSubscription) {
+	log.Trace("MinerRPCService.removeStatusSubscription")
 	s.Lock()
 	defer s.Unlock()
 	delete(s.statusSubscriptions, sub)
 }
 
 func (s MinerRPCService) removeSubmissionSubscription(sub *submissionSubscription) {
+	log.Trace("MinerRPCService.removeSubmissionSubscription")
 	s.Lock()
 	defer s.Unlock()
 	delete(s.submissionSubscriptions, sub)
 }
 
 func (s MinerRPCService) statusSubscriptionMonitor(sub *statusSubscription) {
+	log.Trace("MinerRPCService.statusSubscriptionMonitor")
 	subscription := sub.subscription
 	notifier := sub.notifier
 	for {
@@ -242,6 +254,7 @@ func (s MinerRPCService) statusSubscriptionMonitor(sub *statusSubscription) {
 }
 
 func (s MinerRPCService) statusSubscriptionWorker(channel statusChannel) {
+	log.Trace("MinerRPCService.statusSubscriptionWorker")
 	for {
 		select {
 		case i := <-channel:
@@ -260,6 +273,7 @@ func (s MinerRPCService) statusSubscriptionWorker(channel statusChannel) {
 }
 
 func (s MinerRPCService) submissionSubscriptionMonitor(sub *submissionSubscription) {
+	log.Trace("MinerRPCService.submissionSubscriptionMonitor")
 	subscription := sub.subscription
 	notifier := sub.notifier
 	for {
@@ -279,6 +293,7 @@ func (s MinerRPCService) submissionSubscriptionMonitor(sub *submissionSubscripti
 }
 
 func (s MinerRPCService) submissionSubscriptionWorker(channel submissionChannel) {
+	log.Trace("MinerRPCService.submissionSubscriptionWorker")
 	for {
 		select {
 		case i := <-channel:
@@ -297,6 +312,7 @@ func (s MinerRPCService) submissionSubscriptionWorker(channel submissionChannel)
 }
 
 func startRPCServer(mining *Mining) {
+	log.Trace("startRPCServer")
 	newApi := rpc.API{}
 	newApi.Namespace = "mining"
 	newApi.Version = "1"
@@ -310,6 +326,7 @@ func startRPCServer(mining *Mining) {
 }
 
 func getNotifierAndSubscription(ctx context.Context) (*rpc.Notifier, *rpc.Subscription, error) {
+	log.Trace("getNotifierAndSubscription")
 	notifier, supported := rpc.NotifierFromContext(ctx)
 	if !supported {
 		return nil, nil, rpc.ErrNotificationsUnsupported
