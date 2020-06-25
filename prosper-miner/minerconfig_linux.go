@@ -3,7 +3,7 @@
 package main
 
 func getDefaultHashTableDirectory() (string, error) {
-	return "/var/lib/LXRHash"
+	return "/var/lib/LXRHash", nil
 }
 
 func getSystemConfigFilePath() (string, error) {
