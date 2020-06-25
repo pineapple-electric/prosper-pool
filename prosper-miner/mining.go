@@ -237,8 +237,8 @@ func (m *Mining) resetWhileLocked() {
 		successes := m.client.TotalSuccesses()
 		log.WithFields(log.Fields{"successes": successes}).Debug("Adding blocksSubmitted")
 		m.blocksSubmitted += m.client.TotalSuccesses()
-		// Stop internal goroutines
-		m.client.Close()
+		// No need to call m.client.Close here.  Cancelling the context
+		// in MineUntilStopped will call it.
 	}
 	m.mc = nil
 	m.client = nil
