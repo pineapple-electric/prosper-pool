@@ -50,21 +50,21 @@ func (p *program) run() {
 	startRPCServer(mining)
 	log.WithFields(log.Fields{"platform": service.Platform()}).Info("Service started")
 	for {
-		if mining.IsPaused() {
-			// State 1: Paused
+		if !mining.IsRunning() {
+			// State 1: Not running
 			p.logger.Info("State 1")
 			if mining.HasMinerConfig() {
-				log.Warn("Miner configuration is not nil while paused")
+				log.Warn("Miner configuration is not nil while not running")
 			}
 			if mining.HasStratumClient() {
-				log.Warn("Stratum client is not nil while paused")
+				log.Warn("Stratum client is not nil while not running")
 			}
 			time.Sleep(time.Second)
 		} else if !mining.HasMinerConfig() {
 			// State 2: Seeking configuration
 			p.logger.Info("State 2")
-			if mining.IsPaused() {
-				log.Warn("Mining is paused while seeking configuration")
+			if !mining.IsRunning() {
+				log.Warn("Mining is not running while seeking configuration")
 			}
 			if mining.HasStratumClient() {
 				log.Warn("Stratum client is not nil while seeking configuration")
@@ -75,8 +75,8 @@ func (p *program) run() {
 		} else if !mining.HasStratumClient() {
 			// State 3: Initialize miners
 			p.logger.Info("State 3")
-			if mining.IsPaused() {
-				log.Warn("Mining is paused while starting to mine")
+			if !mining.IsRunning() {
+				log.Warn("Mining is not running while starting to mine")
 			}
 			if !mining.HasMinerConfig() {
 				log.Warn("Miner configuration is not found while starting to mine")
@@ -103,7 +103,7 @@ func (p *program) run() {
 		} else {
 			p.logger.Error("Unknown state")
 			// Unknown state: This is a bug.  Log it and stop.
-			log.WithFields(log.Fields{"mining.paused": mining.paused, "mining.mc": mining.mc, "mining.client": mining.client, "mining.disconnect": mining.disconnect}).Fatal("Mining service entered unexpected state")
+			log.WithFields(log.Fields{"mining.running": mining.running, "mining.mc": mining.mc, "mining.client": mining.client, "mining.disconnect": mining.disconnect}).Fatal("Mining service entered unexpected state")
 		}
 	}
 }

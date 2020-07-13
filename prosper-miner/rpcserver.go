@@ -57,9 +57,9 @@ func (s MinerRPCService) GetStatus() *MiningStatus {
 	return status
 }
 
-// Exposed as mining_isPaused
-func (s MinerRPCService) IsPaused() bool {
-	return s.m.IsPaused()
+// Exposed as mining_isRunning
+func (s MinerRPCService) IsRunning() bool {
+	return s.m.IsRunning()
 }
 
 // Exposed as mining_start

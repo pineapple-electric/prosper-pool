@@ -13,7 +13,7 @@ import (
 )
 
 type Mining struct {
-	paused bool
+	running bool
 	mc *minerConfig
 	notificationChannels *stratum.NotificationChannels
 	blocksSubmitted uint64
@@ -27,7 +27,7 @@ type Mining struct {
 func NewMining () *Mining {
 	log.Trace("NewMining")
 	mining := &Mining{}
-	mining.paused = false
+	mining.running = true
 	mining.notificationChannels = stratum.NewNotificationChannels()
 	mining.statusChannel = make(chan *MiningStatus)
 	return mining
@@ -52,7 +52,7 @@ func (m *Mining) GetMinerConfig() error {
 
 type MiningStatus struct {
 	IsConnected bool	`json:"isConnected"`
-	IsPaused bool		`json:"isPaused"`
+	IsRunning bool		`json:"isRunning"`
 	PoolHostAndPort string	`json:"poolHostAndPort,omitempty"`
 	DurationConnected uint64	`json:"durationConnected,omitempty"`
 	BlocksSubmitted uint64	`json:"blocksSubmitted,omitempty"`
@@ -125,13 +125,13 @@ func (m *Mining) InitializeMiners () error {
 func (m *Mining) IsReadyToMine() bool {
 	m.RLock()
 	defer m.RUnlock()
-	return m.paused == false && m.mc != nil && m.client != nil
+	return m.running == true && m.mc != nil && m.client != nil
 }
 
-func (m *Mining) IsPaused() bool {
+func (m *Mining) IsRunning() bool {
 	m.RLock()
 	defer m.RUnlock()
-	return m.paused
+	return m.running
 }
 
 func (m *Mining) MineUntilStopped() error {
@@ -187,14 +187,14 @@ func (m *Mining) Start() {
 	log.Trace("Mining.Start")
 	m.Lock()
 	defer m.Unlock()
-	m.paused = false
+	m.running = true
 }
 
 func (m *Mining) Stop() {
 	log.Trace("Mining.Stop")
 	m.Lock()
 	defer m.Unlock()
-	m.paused = true
+	m.running = false
 	m.resetWhileLocked()
 }
 
@@ -214,7 +214,7 @@ func (m *Mining) sendStatusNotificationWhileRLocked() {
 func (m *Mining) getStatusWhileRLocked() *MiningStatus {
 	log.Trace("Mining.getStatusWhileRLocked")
 	var status = &MiningStatus{}
-	status.IsPaused = m.paused
+	status.IsRunning = m.running
 	status.IsConnected = m.connectedAt != nil
 	if status.IsConnected {
 		status.PoolHostAndPort = m.client.RemoteAddr()
